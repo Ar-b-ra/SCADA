@@ -30,6 +30,10 @@ import time
 import OpenOPC
 from getpass import getpass
 
+from pymodbus.constants import Endian
+from pymodbus.payload import BinaryPayloadDecoder
+from pymodbus.payload import BinaryPayloadBuilder
+from pymodbus.client.sync import ModbusSerialClient
 
 def connect_opc():
     opc = OpenOPC.client()
@@ -146,8 +150,8 @@ class App(tk.Tk):
     def on_closing(self):
         if messagebox.askokcancel("Quit", "Do you want to quit?"):
             try:
-                print('OPC UA Server disconnecting...')
-                client.disconnect()
+                print('Отключение от устройства опроса температуры...')
+                client.close()
                 print('Done.')
             except:
                 pass
@@ -157,7 +161,7 @@ class App(tk.Tk):
                 print('Done.')
             except:
                 pass
-            self.destroy()
+            App.destroy()
 
     def update(self, dy):
         self.x.append(self.x[-1] + 1)  # update data
@@ -173,10 +177,10 @@ class App(tk.Tk):
     @property
     def data_gen(self):
         while True:
-            self.temp_1.configure(text=round(1000 * random.random(), 1))
-            self.temp_2.configure(text=round(1000 * random.random(), 1))
-            self.temp_3.configure(text=round(1000 * random.random(), 1))
-            self.temp_4.configure(text=round(1000 * random.random(), 1))
+            self.temp_1.configure(text=round(read_value(adr=3), 1))
+            self.temp_2.configure(text=round(read_value(adr=9), 1))
+            self.temp_3.configure(text=round(read_value(adr=15), 1))
+            self.temp_4.configure(text=round(read_value(adr=21), 1))
             yield 1 if random.random() < 0.5 else -1
 
     def start_measuring(self):
@@ -204,6 +208,12 @@ class App(tk.Tk):
 
 ###########################################################################
 
+def read_value(adr, cnt=2, unt=1):
+    result = client.read_holding_registers(address=adr, count=cnt, unit=unt)
+    decoder = BinaryPayloadDecoder.fromRegisters(result.registers, Endian.Big, wordorder=Endian.Little)
+    value = decoder.decode_32bit_float()
+    return value
+
 
 if __name__ == "__main__":
     #client = connect_opc()
@@ -219,6 +229,18 @@ if __name__ == "__main__":
     # database = databases[int(input("Select database: "))][0]
     # cursor.execute(f"USE {database}")
     # cnx.commit()
+    client = ModbusSerialClient(
+        method='rtu',
+        port='COM3',
+        baudrate=9600,
+        timeout=3,
+        parity='N',
+        stopbits=1,
+        bytesize=8
+    )
+
+    client.connect()
+
     root = App()
     root.title("Испытание по методике ООН")
     mainmenu = Menu(root)
