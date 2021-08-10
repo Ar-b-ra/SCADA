@@ -18,6 +18,8 @@ from matplotlib.backends.backend_tkagg import (
 
 import matplotlib.animation as animation
 import matplotlib.pyplot as plt  # $ pip install matplotlib
+from matplotlib import dates
+
 
 import random
 from collections import deque
@@ -84,11 +86,12 @@ class App(tk.Tk):
         ###########################################################################
         self.npoints = 85000
 
-        self.fig_1, self.ax = plt.subplots()
+        self.fig_1, self.ax = plt.subplots(figsize=(10, 6))
         self.ax.set_xlabel('Время замера')
         self.ax.set_ylabel('Температура (С)')
         self.fig_1.suptitle(t='График температур')
-        self.fig_1.subplots_adjust(left=0.1, right=0.974, top=0.9, bottom=0.1)
+        #self.fig_1.subplots_adjust(left=0.1, right=0.974, top=0.9, bottom=0.1)
+        self.ax.xaxis_date()
         self.canvas = FigureCanvasTkAgg(self.fig_1, master=self)  # A tk.DrawingArea.
         self.ani = None
 
@@ -96,7 +99,7 @@ class App(tk.Tk):
         self.toolbar = NavigationToolbar2Tk(self.canvas, self, pack_toolbar=False)
         self.toolbar.update()
 
-        self.canvas.get_tk_widget().grid(row=0, column=7, rowspan=15, columnspan=2)
+        self.canvas.get_tk_widget().grid(row=0, column=7, rowspan=16, columnspan=2)
         self.toolbar.grid(row=16, column=7)
 
         ###########################################################################
@@ -146,7 +149,9 @@ class App(tk.Tk):
         self.start_button = ttk.Button(self, text='Начать эксперимент', command=self.start_measuring)
         self.start_button.grid(row=4, column=0)
 
-        self.timer = 10
+        self.timer = 1000
+
+        self.fmt = dates.DateFormatter('%Y-%m-%d %H:%M:%S')
 
         self.update_temperatures()
 
@@ -170,32 +175,39 @@ class App(tk.Tk):
 
     def update_temperatures_on_plot(self, dy):
         self.x.append(self.x[-1] + 1)  # update data
+        #self.dates.append(datetime.datetime.now().time())
+        self.dates.append(datetime.datetime.now())
         self.y_temp_1.append(float(self.temp_1.cget('text')))
         self.y_temp_2.append(float(self.temp_2.cget('text')))
         self.y_temp_3.append(float(self.temp_3.cget('text')))
         self.y_temp_4.append(float(self.temp_4.cget('text')))
 
-        self.line_1.set_data(self.x, self.y_temp_1)
-        self.line_2.set_data(self.x, self.y_temp_2)
-        self.line_3.set_data(self.x, self.y_temp_3)
-        self.line_4.set_data(self.x, self.y_temp_4)
+        self.line_1.set_data(self.dates, self.y_temp_1)
+        self.line_2.set_data(self.dates, self.y_temp_2)
+        self.line_3.set_data(self.dates, self.y_temp_3)
+        self.line_4.set_data(self.dates, self.y_temp_4)
 
         self.ax.relim()  # update axes limits
+        # self.ax.figure.autofmt_xdate()
+        self.ax.xaxis.set_major_formatter(self.fmt)
+        self.fig_1.autofmt_xdate()
         self.ax.autoscale_view(True, True, True)
         return self.line_1, self.line_2, self.line_3, self.line_4, self.ax, self.y_temp_1, self.y_temp_2, self.y_temp_3, self.y_temp_4
 
     def init_temperatures(self):
           # clear your figure
-        self.canvas.draw_idle()  # redraw your canvas so it becomes empty
+        #self.fig_1.clear()  # redraw your canvas so it becomes empty
+        self.dates = deque([datetime.datetime.now()], maxlen=self.npoints)
+        print(self.dates)
         self.x = deque([0], maxlen=self.npoints)
         self.y_temp_1 = deque([self.temp_1.cget('text')], maxlen=self.npoints)
         self.y_temp_2 = deque([self.temp_2.cget('text')], maxlen=self.npoints)
         self.y_temp_3 = deque([self.temp_3.cget('text')], maxlen=self.npoints)
         self.y_temp_4 = deque([self.temp_4.cget('text')], maxlen=self.npoints)
-        [self.line_1] = self.ax.plot(self.x, self.y_temp_1, label='Температура в печи')
-        [self.line_2] = self.ax.plot(self.x, self.y_temp_2, label='Датчик 1')
-        [self.line_3] = self.ax.plot(self.x, self.y_temp_3, label='Датчик 2')
-        [self.line_4] = self.ax.plot(self.x, self.y_temp_4, label='Датчик 3')
+        [self.line_1] = self.ax.plot(self.dates, self.y_temp_1, label='Температура в печи')
+        [self.line_2] = self.ax.plot(self.dates, self.y_temp_2, label='Датчик 1')
+        [self.line_3] = self.ax.plot(self.dates, self.y_temp_3, label='Датчик 2')
+        [self.line_4] = self.ax.plot(self.dates, self.y_temp_4, label='Датчик 3')
         self.ax.legend()
         return self.x, self.line_1, self.line_2, self.line_3, self.line_4
 
@@ -246,6 +258,7 @@ class App(tk.Tk):
         os.mkdir(folder_name)
         workbook = xlsxwriter.Workbook(f'{folder_name}\Результат эксперимента.xlsx')
         worksheet = workbook.add_worksheet()
+        date_format = workbook.add_format({'num_format': 'd mmmm yyyy h:mm:ss'})
         expenses = (
             ['Длина ребра кубического контейнера, мм', self.len_entry.get()],
             ['Температура воздуха в печи, ℃', self.temp_entry.get()],
@@ -266,6 +279,7 @@ class App(tk.Tk):
             worksheet.write(row, col + 1, self.y_temp_2[i])
             worksheet.write(row, col + 2, self.y_temp_3[i])
             worksheet.write(row, col + 3, self.y_temp_4[i])
+            worksheet.write_datetime(row, col + 4, self.dates[i], date_format)
             row += 1
         workbook.close()
 
