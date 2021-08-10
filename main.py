@@ -23,17 +23,21 @@ import random
 from collections import deque
 
 import pandas as pd
-import numpy as np
 
 import time
+
+import datetime
 
 import OpenOPC
 from getpass import getpass
 
 from pymodbus.constants import Endian
 from pymodbus.payload import BinaryPayloadDecoder
-from pymodbus.payload import BinaryPayloadBuilder
 from pymodbus.client.sync import ModbusSerialClient
+
+import os
+import xlsxwriter
+
 
 def connect_opc():
     opc = OpenOPC.client()
@@ -72,10 +76,6 @@ def connect_db():
             return connect_db()
 
 
-def create_report():
-    pass
-
-
 class App(tk.Tk):
 
     def __init__(self):
@@ -83,13 +83,12 @@ class App(tk.Tk):
 
         ###########################################################################
         self.npoints = 85000
-        self.x = deque([0], maxlen=self.npoints)
-        self.y = deque([0], maxlen=self.npoints)
 
         self.fig_1, self.ax = plt.subplots()
-        [self.line] = self.ax.step(self.x, self.y)
-
+        self.ax.set_xlabel('Время замера')
+        self.ax.set_ylabel('Температура (С)')
         self.fig_1.suptitle(t='График температур')
+        self.fig_1.subplots_adjust(left=0.1, right=0.974, top=0.9, bottom=0.1)
         self.canvas = FigureCanvasTkAgg(self.fig_1, master=self)  # A tk.DrawingArea.
         self.ani = None
 
@@ -97,7 +96,7 @@ class App(tk.Tk):
         self.toolbar = NavigationToolbar2Tk(self.canvas, self, pack_toolbar=False)
         self.toolbar.update()
 
-        self.canvas.get_tk_widget().grid(row=0, column=7, rowspan=15)
+        self.canvas.get_tk_widget().grid(row=0, column=7, rowspan=15, columnspan=2)
         self.toolbar.grid(row=16, column=7)
 
         ###########################################################################
@@ -138,12 +137,18 @@ class App(tk.Tk):
         self.protocol('WM_DELETE_WINDOW', self.on_closing)
         ###########################################################################
 
+        global temperatures
+        temperatures = [round(100 * random.random(), 1) for i in range(4)]
         self.Measuring = BooleanVar()
         self.Measuring.set(FALSE)
         self.Error = BooleanVar()
         self.Error.set(FALSE)
         self.start_button = ttk.Button(self, text='Начать эксперимент', command=self.start_measuring)
         self.start_button.grid(row=4, column=0)
+
+        self.timer = 10
+
+        self.update_temperatures()
 
     ###########################################################################
 
@@ -161,35 +166,57 @@ class App(tk.Tk):
                 print('Done.')
             except:
                 pass
-            App.destroy()
+            self.destroy()
 
-    def update(self, dy):
+    def update_temperatures_on_plot(self, dy):
         self.x.append(self.x[-1] + 1)  # update data
-        self.y.append(self.y[-1] + dy)
+        self.y_temp_1.append(float(self.temp_1.cget('text')))
+        self.y_temp_2.append(float(self.temp_2.cget('text')))
+        self.y_temp_3.append(float(self.temp_3.cget('text')))
+        self.y_temp_4.append(float(self.temp_4.cget('text')))
 
-        self.line.set_xdata(self.x)  # update plot data
-        self.line.set_ydata(self.y)
+        self.line_1.set_data(self.x, self.y_temp_1)
+        self.line_2.set_data(self.x, self.y_temp_2)
+        self.line_3.set_data(self.x, self.y_temp_3)
+        self.line_4.set_data(self.x, self.y_temp_4)
 
         self.ax.relim()  # update axes limits
         self.ax.autoscale_view(True, True, True)
-        return self.line, self.ax
+        return self.line_1, self.line_2, self.line_3, self.line_4, self.ax, self.y_temp_1, self.y_temp_2, self.y_temp_3, self.y_temp_4
 
-    @property
-    def data_gen(self):
-        while True:
-            self.temp_1.configure(text=round(read_value(adr=3), 1))
-            self.temp_2.configure(text=round(read_value(adr=9), 1))
-            self.temp_3.configure(text=round(read_value(adr=15), 1))
-            self.temp_4.configure(text=round(read_value(adr=21), 1))
-            yield 1 if random.random() < 0.5 else -1
+    def init_temperatures(self):
+          # clear your figure
+        self.canvas.draw_idle()  # redraw your canvas so it becomes empty
+        self.x = deque([0], maxlen=self.npoints)
+        self.y_temp_1 = deque([self.temp_1.cget('text')], maxlen=self.npoints)
+        self.y_temp_2 = deque([self.temp_2.cget('text')], maxlen=self.npoints)
+        self.y_temp_3 = deque([self.temp_3.cget('text')], maxlen=self.npoints)
+        self.y_temp_4 = deque([self.temp_4.cget('text')], maxlen=self.npoints)
+        [self.line_1] = self.ax.plot(self.x, self.y_temp_1, label='Температура в печи')
+        [self.line_2] = self.ax.plot(self.x, self.y_temp_2, label='Датчик 1')
+        [self.line_3] = self.ax.plot(self.x, self.y_temp_3, label='Датчик 2')
+        [self.line_4] = self.ax.plot(self.x, self.y_temp_4, label='Датчик 3')
+        self.ax.legend()
+        return self.x, self.line_1, self.line_2, self.line_3, self.line_4
 
     def start_measuring(self):
         if self.Measuring.get() == FALSE:
+            if self.len_entry.get() == '' or self.time_entry.get() == '' \
+                    or self.temp_entry.get() == '' or self.den_entry.get() == '':
+                messagebox.showerror('Ошибка', 'Все параметры замера должны быть заполнены!')
+                return
+            if self.len_entry.get().isdigit() and self.temp_entry.get().isdigit() and \
+                    self.time_entry.get().isdigit() and self.den_entry.get().isdigit():
+                pass
+            else:
+                messagebox.showerror('Ошибка', 'Провертьте корректность введёных парамтеров')
+                return
             self.Measuring.set(TRUE)
             self.Error.set(FALSE)
-            self.ani = animation.FuncAnimation(self.fig_1, self.update, self.data_gen, interval=1000, repeat=False)
+            self.ani = animation.FuncAnimation(self.fig_1, self.update_temperatures_on_plot, init_func=self.init_temperatures,
+                                               interval=self.timer, repeat=False)
             self.ani._start()
-            self.start_button.configure(text='Остановить замер')
+            self.start_button.configure(text='Остановить эксперимент')
             self.len_entry.configure(state='readonly')
             self.temp_entry.configure(state='readonly')
             self.time_entry.configure(state='readonly')
@@ -198,12 +225,49 @@ class App(tk.Tk):
         else:
             self.ani.event_source.stop()
             self.Measuring.set(FALSE)
+            self.create_report()
             self.len_entry.configure(state='NORMAL')
             self.temp_entry.configure(state='NORMAL')
             self.time_entry.configure(state='NORMAL')
             self.den_entry.configure(state='NORMAL')
-            self.start_button.configure(text='Начать замер')
+            self.start_button.configure(text='Начать эксперимент')
             print('Stop measuring')
+
+    def update_temperatures(self):
+        temperatures = [round(100 * random.random(), 1) for i in range(4)]
+        self.temp_1.configure(text=temperatures[0])
+        self.temp_2.configure(text=temperatures[1])
+        self.temp_3.configure(text=temperatures[2])
+        self.temp_4.configure(text=temperatures[3])
+        self.after(self.timer, self.update_temperatures)
+
+    def create_report(self):
+        folder_name = datetime.datetime.now().strftime("%d_%m_%Y %H-%M-%S")
+        os.mkdir(folder_name)
+        workbook = xlsxwriter.Workbook(f'{folder_name}\Результат эксперимента.xlsx')
+        worksheet = workbook.add_worksheet()
+        expenses = (
+            ['Длина ребра кубического контейнера, мм', self.len_entry.get()],
+            ['Температура воздуха в печи, ℃', self.temp_entry.get()],
+            ['Время замера, час', self.time_entry.get()],
+            ['Влажность образца, %', self.den_entry.get()]
+        )
+        row = 0
+        col = 0
+
+        # Iterate over the data and write it out row by row.
+        for item, parametr in (expenses):
+            worksheet.write(row, col, item)
+            worksheet.write(row, col + 1, int(parametr))
+            row += 1
+
+        for i in range(len(self.y_temp_1)):
+            worksheet.write(row, col, self.y_temp_1[i])
+            worksheet.write(row, col + 1, self.y_temp_2[i])
+            worksheet.write(row, col + 2, self.y_temp_3[i])
+            worksheet.write(row, col + 3, self.y_temp_4[i])
+            row += 1
+        workbook.close()
 
 
 ###########################################################################
@@ -216,7 +280,7 @@ def read_value(adr, cnt=2, unt=1):
 
 
 if __name__ == "__main__":
-    #client = connect_opc()
+    # client = connect_opc()
     # cnx = connect_db()
     # cursor = cnx.cursor(buffered=True)
     # databases = "show databases"
@@ -255,5 +319,5 @@ if __name__ == "__main__":
     mainmenu.add_cascade(label="Справка", menu=helpmenu)
 
     ###########################################################################
-
+    root.resizable(height=False, width=False)
     root.mainloop()
