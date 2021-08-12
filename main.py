@@ -19,7 +19,7 @@ from matplotlib.backends.backend_tkagg import (
 import matplotlib.animation as animation
 import matplotlib.pyplot as plt  # $ pip install matplotlib
 from matplotlib import dates
-
+from matplotlib import ticker
 
 import random
 from collections import deque
@@ -84,14 +84,15 @@ class App(tk.Tk):
         super(App, self).__init__()
 
         ###########################################################################
-        self.npoints = 85000
+        self.temperatures = []
 
+        self.npoints = 100
         self.fig_1, self.ax = plt.subplots(figsize=(10, 6))
-        self.ax.set_xlabel('Время замера')
+        # self.ax.set_xlabel('Время замера')
         self.ax.set_ylabel('Температура (С)')
         self.fig_1.suptitle(t='График температур')
-        #self.fig_1.subplots_adjust(left=0.1, right=0.974, top=0.9, bottom=0.1)
-        self.ax.xaxis_date()
+        self.ax.grid()
+        self.fig_1.subplots_adjust(left=0.07, right=0.974, top=0.945, bottom=0.1)
         self.canvas = FigureCanvasTkAgg(self.fig_1, master=self)  # A tk.DrawingArea.
         self.ani = None
 
@@ -99,16 +100,20 @@ class App(tk.Tk):
         self.toolbar = NavigationToolbar2Tk(self.canvas, self, pack_toolbar=False)
         self.toolbar.update()
 
-        self.canvas.get_tk_widget().grid(row=0, column=7, rowspan=16, columnspan=2)
-        self.toolbar.grid(row=16, column=7)
+        self.canvas.get_tk_widget().grid(row=0, column=0, columnspan=3)
+        self.toolbar.grid(row=1, column=0, columnspan=3)
 
         ###########################################################################
+        # настройка внешнего вида окна (размещение полей с показаниями датчиков и параметрами замеров
 
         self.Parametr_frame = ttk.LabelFrame(self, text='Параметры замера')
-        self.Parametr_frame.grid(row=0, column=0, columnspan=6)
+        self.Parametr_frame.grid(row=2, column=0, columnspan=1)
 
         self.cur_temp = ttk.LabelFrame(self, text='Текущая температура')
-        self.cur_temp.grid(row=1, column=0)
+        self.cur_temp.grid(row=2, column=1)
+
+        self.time_frame = ttk.LabelFrame(self, text='Время замера')
+        self.time_frame.grid(row=2, column=2)
 
         ttk.Label(self.Parametr_frame, text='Длина ребра кубического контейнера, мм').grid(row=0, column=0, sticky=tk.W)
         ttk.Label(self.Parametr_frame, text='Температура воздуха в печи, ℃').grid(row=1, column=0, sticky=tk.W)
@@ -124,10 +129,10 @@ class App(tk.Tk):
         self.den_entry = Entry(self.Parametr_frame, width=5)
         self.den_entry.grid(row=3, column=1)
 
-        ttk.Label(self.cur_temp, text='Датчик 1, ℃').grid(row=0, column=0)
-        ttk.Label(self.cur_temp, text='Датчик 2, ℃').grid(row=1, column=0)
-        ttk.Label(self.cur_temp, text='Датчик 3, ℃').grid(row=2, column=0)
-        ttk.Label(self.cur_temp, text='Датчик 4, ℃').grid(row=3, column=0)
+        ttk.Label(self.cur_temp, text='Температура в печи, ℃').grid(row=0, column=0)
+        ttk.Label(self.cur_temp, text='Датчик 1, ℃').grid(row=1, column=0)
+        ttk.Label(self.cur_temp, text='Датчик 2, ℃').grid(row=2, column=0)
+        ttk.Label(self.cur_temp, text='Датчик 3, ℃').grid(row=3, column=0)
         self.temp_1 = ttk.Label(self.cur_temp, justify='left')
         self.temp_1.grid(row=0, column=1)
         self.temp_2 = ttk.Label(self.cur_temp, justify='left')
@@ -137,50 +142,62 @@ class App(tk.Tk):
         self.temp_4 = ttk.Label(self.cur_temp, justify='left')
         self.temp_4.grid(row=3, column=1)
 
+        ttk.Label(self.time_frame, text='Текущее время', justify='left').grid(row=0, column=0, sticky=tk.W)
+        ttk.Label(self.time_frame, text='Время начала\nэксперимента', justify='left').grid(row=1, column=0, sticky=tk.W)
+        ttk.Label(self.time_frame, text='Время окончания эксперимента', justify='left').grid(row=2, column=0,
+                                                                                             sticky=tk.W)
+        ttk.Label(self.time_frame, text='Фактическое время\nокончания эксперимента', justify='left').grid(row=3,
+                                                                                                          column=0,
+                                                                                                          sticky=tk.W)
+        self.cur_time = ttk.Label(self.time_frame, justify='left', text=datetime.datetime.now().strftime('%H:%M:%S'))
+        self.cur_time.grid(row=0, column=1)
+        self.start_time = ttk.Label(self.time_frame, justify='left')
+        self.start_time.grid(row=1, column=1)
+        self.fihish_time = ttk.Label(self.time_frame, justify='left')
+        self.fihish_time.grid(row=2, column=1)
+        self.real_finish_time = ttk.Label(self.time_frame, justify='left')
+        self.real_finish_time.grid(row=3, column=1)
+
         self.protocol('WM_DELETE_WINDOW', self.on_closing)
         ###########################################################################
 
-        global temperatures
-        temperatures = [round(100 * random.random(), 1) for i in range(4)]
+        self.temperatures = [round(100 * random.random(), 1) for i in range(4)]
         self.Measuring = BooleanVar()
         self.Measuring.set(FALSE)
         self.Error = BooleanVar()
         self.Error.set(FALSE)
         self.start_button = ttk.Button(self, text='Начать эксперимент', command=self.start_measuring)
-        self.start_button.grid(row=4, column=0)
+        self.start_button.grid(row=3, column=0)
 
-        self.timer = 1000
+        self.timer = 300  # время опроса датчиков и обновления графиков в миллисекундах
 
-        self.fmt = dates.DateFormatter('%Y-%m-%d %H:%M:%S')
-
-        self.update_temperatures()
+        self.fmt = dates.DateFormatter('%d.%m.%Y %H:%M') # формат отображения даты измерения на графиках
 
     ###########################################################################
 
     def on_closing(self):
-        if messagebox.askokcancel("Quit", "Do you want to quit?"):
+        if messagebox.askokcancel("Выход", "Вы действительно хотите выйти?"):
             try:
-                print('Отключение от устройства опроса температуры...')
+                print('Отключение устройств...')
                 client.close()
-                print('Done.')
+                print('Выполнено.')
             except:
                 pass
-            try:
-                print('MySQL server disconnecting...')
-                # cnx.disconnect()
-                print('Done.')
-            except:
-                pass
-            self.destroy()
+            # try:
+            #     print('MySQL server disconnecting...')
+            #     # cnx.disconnect()
+            #     print('Done.')
+            # except:
+            #     pass
+            tk.Tk.quit(self)
 
     def update_temperatures_on_plot(self, dy):
-        self.x.append(self.x[-1] + 1)  # update data
-        #self.dates.append(datetime.datetime.now().time())
+
         self.dates.append(datetime.datetime.now())
-        self.y_temp_1.append(float(self.temp_1.cget('text')))
-        self.y_temp_2.append(float(self.temp_2.cget('text')))
-        self.y_temp_3.append(float(self.temp_3.cget('text')))
-        self.y_temp_4.append(float(self.temp_4.cget('text')))
+        self.y_temp_1.append(self.temperatures[0])
+        self.y_temp_2.append(self.temperatures[1])
+        self.y_temp_3.append(self.temperatures[2])
+        self.y_temp_4.append(self.temperatures[3])
 
         self.line_1.set_data(self.dates, self.y_temp_1)
         self.line_2.set_data(self.dates, self.y_temp_2)
@@ -195,21 +212,28 @@ class App(tk.Tk):
         return self.line_1, self.line_2, self.line_3, self.line_4, self.ax, self.y_temp_1, self.y_temp_2, self.y_temp_3, self.y_temp_4
 
     def init_temperatures(self):
-          # clear your figure
-        #self.fig_1.clear()  # redraw your canvas so it becomes empty
+        try:
+            self.line_1.remove()
+            self.line_2.remove()
+            self.line_3.remove()
+            self.line_4.remove()
+
+        except:
+            pass
+
         self.dates = deque([datetime.datetime.now()], maxlen=self.npoints)
-        print(self.dates)
-        self.x = deque([0], maxlen=self.npoints)
-        self.y_temp_1 = deque([self.temp_1.cget('text')], maxlen=self.npoints)
-        self.y_temp_2 = deque([self.temp_2.cget('text')], maxlen=self.npoints)
-        self.y_temp_3 = deque([self.temp_3.cget('text')], maxlen=self.npoints)
-        self.y_temp_4 = deque([self.temp_4.cget('text')], maxlen=self.npoints)
+        self.start_time.configure(text=datetime.datetime.now().strftime('%H:%M:%S'))
+        self.ax.xaxis_date()
+        self.y_temp_1 = deque([self.temperatures[0]], maxlen=self.npoints)
+        self.y_temp_2 = deque([self.temperatures[1]], maxlen=self.npoints)
+        self.y_temp_3 = deque([self.temperatures[2]], maxlen=self.npoints)
+        self.y_temp_4 = deque([self.temperatures[3]], maxlen=self.npoints)
         [self.line_1] = self.ax.plot(self.dates, self.y_temp_1, label='Температура в печи')
         [self.line_2] = self.ax.plot(self.dates, self.y_temp_2, label='Датчик 1')
         [self.line_3] = self.ax.plot(self.dates, self.y_temp_3, label='Датчик 2')
         [self.line_4] = self.ax.plot(self.dates, self.y_temp_4, label='Датчик 3')
         self.ax.legend()
-        return self.x, self.line_1, self.line_2, self.line_3, self.line_4
+        return self.dates, self.line_1, self.line_2, self.line_3, self.line_4
 
     def start_measuring(self):
         if self.Measuring.get() == FALSE:
@@ -223,9 +247,14 @@ class App(tk.Tk):
             else:
                 messagebox.showerror('Ошибка', 'Провертьте корректность введёных парамтеров')
                 return
+            params = f'Длина ребра: {self.len_entry.get()} мм\nТемпература воздуха в печи: {self.temp_entry.get()} С\nВлажность воздуха: {self.den_entry.get()}%.'
+
+            if not messagebox.askyesno("Подтвердите введёные параметры", params):
+                return
             self.Measuring.set(TRUE)
             self.Error.set(FALSE)
-            self.ani = animation.FuncAnimation(self.fig_1, self.update_temperatures_on_plot, init_func=self.init_temperatures,
+            self.ani = animation.FuncAnimation(self.fig_1, self.update_temperatures_on_plot,
+                                               init_func=self.init_temperatures,
                                                interval=self.timer, repeat=False)
             self.ani._start()
             self.start_button.configure(text='Остановить эксперимент')
@@ -233,7 +262,7 @@ class App(tk.Tk):
             self.temp_entry.configure(state='readonly')
             self.time_entry.configure(state='readonly')
             self.den_entry.configure(state='readonly')
-            print('Starting measuring')
+            print('Эксперимент начат')
         else:
             self.ani.event_source.stop()
             self.Measuring.set(FALSE)
@@ -243,15 +272,19 @@ class App(tk.Tk):
             self.time_entry.configure(state='NORMAL')
             self.den_entry.configure(state='NORMAL')
             self.start_button.configure(text='Начать эксперимент')
-            print('Stop measuring')
+            print('Эксперимент закончен')
 
     def update_temperatures(self):
-        temperatures = [round(100 * random.random(), 1) for i in range(4)]
-        self.temp_1.configure(text=temperatures[0])
-        self.temp_2.configure(text=temperatures[1])
-        self.temp_3.configure(text=temperatures[2])
-        self.temp_4.configure(text=temperatures[3])
-        self.after(self.timer, self.update_temperatures)
+        self.temperatures = [round(100 * random.random(), 1) for i in range(4)]
+        self.temp_1.configure(text=self.temperatures[0])
+        self.temp_2.configure(text=self.temperatures[1])
+        self.temp_3.configure(text=self.temperatures[2])
+        self.temp_4.configure(text=self.temperatures[3])
+        return self.temperatures, self.after(self.timer, self.update_temperatures)
+
+    def update_current_time(self):
+        self.cur_time.configure(text=datetime.datetime.now().strftime('%H:%M:%S'))
+        self.after(1000, self.update_current_time)
 
     def create_report(self):
         folder_name = datetime.datetime.now().strftime("%d_%m_%Y %H-%M-%S")
@@ -334,4 +367,6 @@ if __name__ == "__main__":
 
     ###########################################################################
     root.resizable(height=False, width=False)
+    root.update_current_time()
+    root.update_temperatures()
     root.mainloop()
