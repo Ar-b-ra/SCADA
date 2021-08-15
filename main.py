@@ -146,9 +146,9 @@ class App(tk.Tk):
         ttk.Label(self.time_frame, text='Фактическое время\nокончания эксперимента', justify='left').grid(row=3,
                                                                                                           column=0,
                                                                                                           sticky=tk.W)
-        self.cur_time_laber = ttk.Label(self.time_frame, justify='left',
+        self.cur_time_label = ttk.Label(self.time_frame, justify='left',
                                         text=datetime.datetime.now().time().strftime('%H:%M:%S'))
-        self.cur_time_laber.grid(row=0, column=1)
+        self.cur_time_label.grid(row=0, column=1)
         self.start_time = ttk.Label(self.time_frame, justify='left')
         self.start_time.grid(row=1, column=1)
         self.fihish_time_label = ttk.Label(self.time_frame, justify='left')
@@ -167,7 +167,7 @@ class App(tk.Tk):
         self.start_button = ttk.Button(self, text='Начать эксперимент', command=self.start_measuring)
         self.start_button.grid(row=3, column=0)
 
-        self.timer = 300  # время опроса датчиков и обновления графиков в миллисекундах
+        self.timer = 3000  # время опроса датчиков и обновления графиков в миллисекундах
 
         self.fmt = dates.DateFormatter('%d.%m.%Y %H:%M:%S')  # формат отображения даты измерения на графиках
 
@@ -220,7 +220,12 @@ class App(tk.Tk):
             print('Время окончания: ', self.real_finish)
             return self.stop_measuring()
 
-        return self.line_1, self.line_2, self.line_3, self.line_4, self.ax, self.y_temp_1, self.y_temp_2, self.y_temp_3, self.y_temp_4
+        if any(self.temperatures[i] - self.temperatures[0] >= 60 for i in range(1, 4, 1)):
+            self.Error.set(TRUE)
+            return self.stop_measuring()
+
+        return self.line_1, self.line_2, self.line_3, self.line_4, self.ax, self.y_temp_1, self.y_temp_2,\
+               self.y_temp_3, self.y_temp_4
 
     def init_temperatures(self):
         try:
@@ -262,7 +267,8 @@ class App(tk.Tk):
             else:
                 messagebox.showerror('Ошибка', 'Провертьте корректность введёных парамтеров')
                 return
-            params = f'Длина ребра: {self.len_entry.get()} мм\nТемпература воздуха в печи: {self.temp_entry.get()} С\nВлажность воздуха: {self.den_entry.get()}%.'
+            params = f'Длина ребра: {self.len_entry.get()} мм\nТемпература воздуха в печи: {self.temp_entry.get()}' \
+                     f' С\nВлажность воздуха: {self.den_entry.get()}%.'
 
             if not messagebox.askyesno("Подтвердите введёные параметры", params):
                 return
@@ -295,7 +301,10 @@ class App(tk.Tk):
         self.time_entry.configure(state='NORMAL')
         self.den_entry.configure(state='NORMAL')
         self.start_button.configure(text='Начать эксперимент')
-        print('Эксперимент закончен')
+        if self.Error.get():
+            messagebox.showwarning('Остановка эксперимента', 'Произошло возгорание!')
+        else:
+            print('Эксперимент закончен')
         self.start_button.configure(command=self.start_measuring)
 
     def update_temperatures(self):
@@ -304,10 +313,10 @@ class App(tk.Tk):
         self.temp_2.configure(text=self.temperatures[1])
         self.temp_3.configure(text=self.temperatures[2])
         self.temp_4.configure(text=self.temperatures[3])
-        return self.temperatures, self.after(self.timer, self.update_temperatures)
+        return self.temperatures, self.after(int(self.timer/10), self.update_temperatures)
 
     def update_current_time(self):
-        self.cur_time_laber.configure(text=datetime.datetime.now().strftime('%d/%m/%y %H:%M:%S'))
+        self.cur_time_label.configure(text=datetime.datetime.now().strftime('%d/%m/%y %H:%M:%S'))
         self.after(1000, self.update_current_time)
 
     def create_report(self):
