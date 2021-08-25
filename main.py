@@ -36,6 +36,9 @@ from pymodbus.client.sync import ModbusSerialClient
 
 import os
 import xlsxwriter
+import xlsxreader
+from docxtpl import DocxTemplate, InlineImage
+from docx.shared import Mm
 
 
 def connect_opc():
@@ -158,6 +161,7 @@ class App(tk.Tk):
 
         self.protocol('WM_DELETE_WINDOW', self.on_closing)
         ###########################################################################
+        # Указание начальных параметров для замера
 
         self.temperatures = [round(100 * random.random(), 1) for i in range(4)]
         self.Measuring = BooleanVar()
@@ -176,9 +180,16 @@ class App(tk.Tk):
         self.real_finish = datetime.datetime.now()
 
     ###########################################################################
+    # Отключение от COM порта и закрытие окна
 
     def on_closing(self):
         if messagebox.askokcancel("Выход", "Вы действительно хотите выйти?"):
+            client.write_registers(3, 0, unit=1)
+            if self.Measuring.get():
+                self.ani.event_source.stop()
+                self.Measuring.set(FALSE)
+                if messagebox.askyesno('Остановка эксперимента', 'Эксперимент не завершён. Создать отчёт?'):
+                    self.stop_measuring()
             try:
                 print('Отключение устройств...')
                 client.close()
@@ -192,6 +203,8 @@ class App(tk.Tk):
             # except:
             #     pass
             tk.Tk.quit(self)
+
+    # Обновление показаний температур на экране
 
     def update_temperatures_on_plot(self, dy):
         self.dates.append(datetime.datetime.now())
@@ -213,8 +226,10 @@ class App(tk.Tk):
 
         self.real_finish = datetime.datetime.now()
 
-        if self.real_finish >= self.finish:
+        if max(self.temperatures) > self.max_temp:
+            self.max_temp = max(self.temperatures)
 
+        if self.real_finish >= self.finish:
             print('Эксперимент окончен успешно!')
             print('Время начала: ', self.start)
             print('Время окончания: ', self.real_finish)
@@ -224,8 +239,10 @@ class App(tk.Tk):
             self.Error.set(TRUE)
             return self.stop_measuring()
 
-        return self.line_1, self.line_2, self.line_3, self.line_4, self.ax, self.y_temp_1, self.y_temp_2,\
+        return self.line_1, self.line_2, self.line_3, self.line_4, self.ax, self.y_temp_1, self.y_temp_2, \
                self.y_temp_3, self.y_temp_4
+
+    # Начальные параметры для генерации графиков температур
 
     def init_temperatures(self):
         try:
@@ -235,6 +252,7 @@ class App(tk.Tk):
             self.line_4.remove()
         except:
             pass
+        self.max_temp = 0
         self.start = datetime.datetime.now()
         self.finish = self.start + datetime.timedelta(hours=24)
         self.dates = deque([datetime.datetime.now()], maxlen=self.npoints)
@@ -254,6 +272,8 @@ class App(tk.Tk):
         [self.line_4] = self.ax.plot(self.dates, self.y_temp_4, label='Датчик 3')
         self.ax.legend()
         return self.dates, self.line_1, self.line_2, self.line_3, self.line_4
+
+    # Начало замера
 
     def start_measuring(self):
         if self.Measuring.get() == FALSE:
@@ -277,6 +297,7 @@ class App(tk.Tk):
             self.ani = animation.FuncAnimation(self.fig_1, self.update_temperatures_on_plot,
                                                init_func=self.init_temperatures,
                                                interval=self.timer, repeat=False)
+            client.write_registers(3, 16256, unit=1)
             self.ani._start()
             self.real_finish_label.configure(text='')
             self.start_button.configure(text='Остановить эксперимент')
@@ -289,9 +310,13 @@ class App(tk.Tk):
 
     def ask_to_stop(self):
         if messagebox.askyesno('Прервать эксперимент', 'Вы действительно хотите прервать эксперимент?'):
+            print('Эксперимент окончен вручную')
             return self.stop_measuring()
 
+    # Остановка замера по превышению температуры или по нажатию кнопки
+
     def stop_measuring(self):
+        client.write_registers(3, 0, unit=1)
         self.real_finish_label.configure(text=self.real_finish.strftime('%d/%m/%y %H:%M:%S'))
         self.ani.event_source.stop()
         self.Measuring.set(FALSE)
@@ -304,24 +329,25 @@ class App(tk.Tk):
         if self.Error.get():
             messagebox.showwarning('Остановка эксперимента', 'Произошло возгорание!')
         else:
-            print('Эксперимент закончен')
+            messagebox.showinfo('Остановка эксперимента', 'Эксперимент прошёл успешно!')
         self.start_button.configure(command=self.start_measuring)
 
     def update_temperatures(self):
-        self.temperatures = [round(100 * random.random(), 1) for i in range(4)]
+        self.temperatures = [round(read_value(24 + i * 2, 2, 1), 1) for i in range(4)]
         self.temp_1.configure(text=self.temperatures[0])
         self.temp_2.configure(text=self.temperatures[1])
         self.temp_3.configure(text=self.temperatures[2])
         self.temp_4.configure(text=self.temperatures[3])
-        return self.temperatures, self.after(int(self.timer/10), self.update_temperatures)
+        return self.temperatures, self.after(int(self.timer / 10), self.update_temperatures)
 
     def update_current_time(self):
         self.cur_time_label.configure(text=datetime.datetime.now().strftime('%d/%m/%y %H:%M:%S'))
         self.after(1000, self.update_current_time)
 
     def create_report(self):
-        folder_name = datetime.datetime.now().strftime("%d_%m_%Y %H-%M-%S")
+        folder_name = self.start.strftime("%d_%m_%Y %H-%M-%S")
         os.mkdir(folder_name)
+        self.fig_1.savefig(f'{folder_name}\\График температур.png')
         workbook = xlsxwriter.Workbook(f'{folder_name}\\Результат эксперимента.xlsx')
         worksheet = workbook.add_worksheet('Параметры замера')
         date_format = workbook.add_format({'num_format': 'hh:mm:ss'})
@@ -329,16 +355,23 @@ class App(tk.Tk):
             ['Длина ребра кубического контейнера, мм', self.len_entry.get()],
             ['Температура воздуха в печи, ℃', self.temp_entry.get()],
             ['Время замера, час', self.time_entry.get()],
-            ['Влажность образца, %', self.den_entry.get()]
+            ['Влажность образца, %', self.den_entry.get()],
+            ['Максимаяльная температура, ℃', self.max_temp]
         )
         row = 0
         col = 0
 
         # Iterate over the data and write it out row by row.
-        for item, parametr in expenses:
+        for item, param in expenses:
             worksheet.write(row, col, item)
-            worksheet.write(row, col + 1, int(parametr))
+            worksheet.write_number(row, col + 1, float(param))
             row += 1
+        if self.Error.get():
+            worksheet.write(row, col, 'Результат эксперимента')
+            worksheet.write(row, col+1, 'Произошло возгорание!')
+        else:
+            worksheet.write(row, col, 'Результат эксперимента')
+            worksheet.write(row, col+1, 'Успешный')
 
         row = 0
         worksheet = workbook.add_worksheet('Результаты замеров')
@@ -350,6 +383,31 @@ class App(tk.Tk):
             worksheet.write(row, col + 4, self.dates[i], date_format)
             row += 1
         workbook.close()
+
+        doc = DocxTemplate('Шаблон.docx')
+        myimage = InlineImage(doc, image_descriptor=f'{folder_name}\\График температур.png', width=Mm(175), height=Mm(105))
+        context = {'test_date': self.start.strftime("%d/%m/%Y"),
+                   'test_number': 1,
+                    'len': str(self.len_entry.get()),
+                   'temperature': str(self.temp_entry.get()),
+                   'time': str(self.time_entry.get()),
+                   'den': str(self.den_entry.get()),
+                   'graph_image': myimage,
+                   'max_temp': self.max_temp}
+        if not self.Error.get():
+            context.update({
+                'success': 'отрицательный',
+                'not_raised': ' не',
+                'diff': 60
+            })
+        else:
+            context.update({
+                'success': 'положительный',
+                'not_raised': '',
+                'diff': self.max_temp-float(self.temp_entry.get())
+            })
+        doc.render(context)
+        doc.save(f'{folder_name}\\Отчёт.docx')
 
 
 ###########################################################################
