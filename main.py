@@ -23,12 +23,9 @@ from matplotlib import dates
 import random
 from collections import deque
 
-import pandas as pd
-
 import datetime
 
 # import OpenOPC
-from getpass import getpass
 
 from pymodbus.constants import Endian
 from pymodbus.payload import BinaryPayloadDecoder
@@ -36,7 +33,6 @@ from pymodbus.client.sync import ModbusSerialClient
 
 import os
 import xlsxwriter
-import xlsxreader
 from docxtpl import DocxTemplate, InlineImage
 from docx.shared import Mm
 
@@ -184,7 +180,10 @@ class App(tk.Tk):
 
     def on_closing(self):
         if messagebox.askokcancel("Выход", "Вы действительно хотите выйти?"):
-            client.write_registers(3, 0, unit=1)
+            try:
+                client.write_registers(3, 0, unit=1)
+            except:
+                pass
             if self.Measuring.get():
                 self.ani.event_source.stop()
                 self.Measuring.set(FALSE)
@@ -412,8 +411,26 @@ class App(tk.Tk):
         doc.render(context)
         doc.save(f'{folder_name}\\Отчёт.docx')
 
+    def create_child1(self):
+        self.Child1Window = tk.Toplevel(master=self)
+        self.heat_on_btn = ttk.Button(master=self.Child1Window, text='Включить печь', command=heat_on, width=20)
+        self.heat_off_btn = ttk.Button(master=self.Child1Window, text='Отключить печь', command=heat_off, width=20)
+
+        self.heat_on_btn.pack()
+        self.heat_off_btn.pack()
+
+        self.Child1Window.resizable(height=False, width=False)
+
 
 ###########################################################################
+
+def heat_off():
+    client.write_registers(3, 0, unit=1)
+    print('Печь выключена')
+
+def heat_on():
+    client.write_registers(3, 16256, unit=1)
+    print('Печь включена')
 
 def read_value(adr, cnt=2, unt=1):
     result = client.read_holding_registers(address=adr, count=cnt, unit=unt)
@@ -453,7 +470,7 @@ if __name__ == "__main__":
     mainmenu = Menu(root)
     root.config(menu=mainmenu)
     filemenu = Menu(mainmenu, tearoff=0)
-    filemenu.add_command(label='Создать отчёт')
+    filemenu.add_command(label='Управление печкой', command=root.create_child1)
     filemenu.add_command(label="Выход", command=root.on_closing)
     helpmenu = Menu(mainmenu, tearoff=0)
     helpmenu.add_command(label="Помощь")
