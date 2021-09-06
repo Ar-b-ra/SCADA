@@ -1,13 +1,8 @@
-# This is a sample Python script.
-
-# Press Shift+F10 to execute it or replace it with your code.
-# Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
 import tkinter as tk
 import tkinter.ttk as ttk
 from tkinter import *
 from tkinter.ttk import *
-# from mysql.connecor import errorcode
-# import mysql.connector
+
 
 from tkinter import messagebox
 from tkinter import Menu
@@ -25,7 +20,6 @@ from collections import deque
 
 import datetime
 
-# import OpenOPC
 
 from pymodbus.constants import Endian
 from pymodbus.payload import BinaryPayloadDecoder
@@ -35,44 +29,6 @@ import os
 import xlsxwriter
 from docxtpl import DocxTemplate, InlineImage
 from docx.shared import Mm
-
-
-# def connect_opc():
-#     opc = OpenOPC.client()
-#     servers = opc.servers()
-#     count = 0
-#     for server in servers:
-#         print(count, ':', server)
-#         count += 1
-#     opc_connect = False
-#     while not opc_connect:
-#         try:
-#             choice = int(input('Выберите номер сервера: '))
-#             print('Выполняется подключение к ', servers[choice])
-#             opc.connect(servers[choice])
-#             opc_connect = True
-#         except:
-#             print("Ошибка подключения. Попробуйте снова")
-#     print(f'Подключение к серверу {servers[choice]} произошло успешно!')
-#     return opc
-
-
-# def connect_db():
-#     try:
-#         cnx = mysql.connector.connect(user=input("user: "),
-#                                       password=getpass(prompt="Password: "),
-#                                       host=input("host: "),
-#                                       auth_plugin='mysql_native_password')
-#         print("Connected")
-#         return cnx
-#     except mysql.connector.Error as err:
-#         if err.errno == mysql.connector.errorcode.ER_ACCESS_DENIED_ERROR:
-#             print("Something is wrong with your user name or password")
-#             return connect_db()
-#         else:
-#             print(err)
-#             return connect_db()
-
 
 class App(tk.Tk):
 
@@ -195,12 +151,6 @@ class App(tk.Tk):
                 print('Выполнено.')
             except:
                 pass
-            # try:
-            #     print('MySQL server disconnecting...')
-            #     # cnx.disconnect()
-            #     print('Done.')
-            # except:
-            #     pass
             tk.Tk.quit(self)
 
     # Обновление показаний температур на экране
@@ -440,19 +390,6 @@ def read_value(adr, cnt=2, unt=1):
 
 
 if __name__ == "__main__":
-    # client = connect_opc()
-    # cnx = connect_db()
-    # cursor = cnx.cursor(buffered=True)
-    # databases = "show databases"
-    # cursor.execute(databases)
-    # count = 0
-    # databases = list(cursor)
-    # for i in databases:
-    #     print(count, i[0])
-    #     count += 1
-    # database = databases[int(input("Select database: "))][0]
-    # cursor.execute(f"USE {database}")
-    # cnx.commit()
     client = ModbusSerialClient(
         method='rtu',
         port='COM3',
