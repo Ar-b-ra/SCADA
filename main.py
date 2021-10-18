@@ -3,7 +3,6 @@ import tkinter.ttk as ttk
 from tkinter import *
 from tkinter.ttk import *
 
-
 from tkinter import messagebox
 from tkinter import Menu
 
@@ -20,7 +19,6 @@ from collections import deque
 
 import datetime
 
-
 from pymodbus.constants import Endian
 from pymodbus.payload import BinaryPayloadDecoder
 from pymodbus.client.sync import ModbusSerialClient
@@ -29,6 +27,7 @@ import os
 import xlsxwriter
 from docxtpl import DocxTemplate, InlineImage
 from docx.shared import Mm
+
 
 class App(tk.Tk):
 
@@ -104,8 +103,8 @@ class App(tk.Tk):
         self.cur_time_label = ttk.Label(self.time_frame, justify='left',
                                         text=datetime.datetime.now().time().strftime('%H:%M:%S'))
         self.cur_time_label.grid(row=0, column=1)
-        self.start_time = ttk.Label(self.time_frame, justify='left')
-        self.start_time.grid(row=1, column=1)
+        self.start_time_label = ttk.Label(self.time_frame, justify='left')
+        self.start_time_label.grid(row=1, column=1)
         self.fihish_time_label = ttk.Label(self.time_frame, justify='left')
         self.fihish_time_label.grid(row=2, column=1)
         self.real_finish_label = ttk.Label(self.time_frame, justify='left')
@@ -173,7 +172,7 @@ class App(tk.Tk):
         self.fig_1.autofmt_xdate()
         self.ax.autoscale_view(True, True, True)
 
-        self.real_finish = datetime.datetime.now()
+        self.real_finish = datetime.datetime.now()  # фактическое окончание процесса замера (из - за возгорания или по окончанию таймера)
 
         if max(self.temperatures) > self.max_temp:
             self.max_temp = max(self.temperatures)
@@ -205,7 +204,7 @@ class App(tk.Tk):
         self.start = datetime.datetime.now()
         self.finish = self.start + datetime.timedelta(hours=24)
         self.dates = deque([datetime.datetime.now()], maxlen=self.npoints)
-        self.start_time.configure(text=self.start.strftime('%d/%m/%y %H:%M:%S'))
+        self.start_time_label.configure(text=self.start.strftime('%d/%m/%y %H:%M:%S'))
         self.fihish_time_label.configure(text=self.finish.strftime('%d/%m/%y %H:%M:%S'))
 
         self.ax.xaxis_date()
@@ -320,10 +319,10 @@ class App(tk.Tk):
             row += 1
         if self.Error.get():
             worksheet.write(row, col, 'Результат эксперимента')
-            worksheet.write(row, col+1, 'Произошло возгорание!')
+            worksheet.write(row, col + 1, 'Произошло возгорание!')
         else:
             worksheet.write(row, col, 'Результат эксперимента')
-            worksheet.write(row, col+1, 'Успешный')
+            worksheet.write(row, col + 1, 'Успешный')
 
         row = 0
         worksheet = workbook.add_worksheet('Результаты замеров')
@@ -337,12 +336,13 @@ class App(tk.Tk):
         workbook.close()
 
         doc = DocxTemplate('Шаблон.docx')
-        myimage = InlineImage(doc, image_descriptor=f'{folder_name}\\График температур.png', width=Mm(175), height=Mm(105))
+        myimage = InlineImage(doc, image_descriptor=f'{folder_name}\\График температур.png', width=Mm(175),
+                              height=Mm(105))
         context = {'test_date': self.start.strftime("%d/%m/%Y"),
                    'test_number': 1,
-                    'len': str(self.len_entry.get()),
+                   'len': str(self.len_entry.get()),
                    'temperature': str(self.temp_entry.get()),
-                   'time': str(self.time_entry.get()),
+                   'time': str(round((self.real_finish-self.start).seconds/3600, 1)),
                    'den': str(self.den_entry.get()),
                    'graph_image': myimage,
                    'max_temp': self.max_temp}
@@ -356,7 +356,7 @@ class App(tk.Tk):
             context.update({
                 'success': 'положительный',
                 'not_raised': '',
-                'diff': self.max_temp-float(self.temp_entry.get())
+                'diff': self.max_temp - float(self.temp_entry.get())
             })
         doc.render(context)
         doc.save(f'{folder_name}\\Отчёт.docx')
@@ -378,9 +378,11 @@ def heat_off():
     client.write_registers(3, 0, unit=1)
     print('Печь выключена')
 
+
 def heat_on():
     client.write_registers(3, 16256, unit=1)
     print('Печь включена')
+
 
 def read_value(adr, cnt=2, unt=1):
     result = client.read_holding_registers(address=adr, count=cnt, unit=unt)
