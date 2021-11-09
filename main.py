@@ -27,6 +27,7 @@ import os
 import xlsxwriter
 from docxtpl import DocxTemplate, InlineImage
 from docx.shared import Mm
+from docx2pdf import convert
 
 
 class App(tk.Tk):
@@ -36,6 +37,7 @@ class App(tk.Tk):
 
         ###########################################################################
         self.temperatures = []
+        self.max_temp = 0
 
         self.npoints = 85000
         self.fig_1, self.ax = plt.subplots(figsize=(10, 6))
@@ -84,6 +86,7 @@ class App(tk.Tk):
         ttk.Label(self.cur_temp, text='Датчик 1, ℃').grid(row=1, column=0)
         ttk.Label(self.cur_temp, text='Датчик 2, ℃').grid(row=2, column=0)
         ttk.Label(self.cur_temp, text='Датчик 3, ℃').grid(row=3, column=0)
+        ttk.Label(self.cur_temp, text='Максимальная температура:, ℃').grid(row=4, column=0)
         self.temp_1 = ttk.Label(self.cur_temp, justify='left')
         self.temp_1.grid(row=0, column=1)
         self.temp_2 = ttk.Label(self.cur_temp, justify='left')
@@ -92,6 +95,8 @@ class App(tk.Tk):
         self.temp_3.grid(row=2, column=1)
         self.temp_4 = ttk.Label(self.cur_temp, justify='left')
         self.temp_4.grid(row=3, column=1)
+        self.max_temp_label = ttk.Label(self.cur_temp, justify='left')
+        self.max_temp_label.grid(row=4, column=1)
 
         ttk.Label(self.time_frame, text='Текущее время', justify='left').grid(row=0, column=0, sticky=tk.W)
         ttk.Label(self.time_frame, text='Время начала\nэксперимента', justify='left').grid(row=1, column=0, sticky=tk.W)
@@ -176,6 +181,7 @@ class App(tk.Tk):
 
         if max(self.temperatures) > self.max_temp:
             self.max_temp = max(self.temperatures)
+            self.max_temp_label.configure(text=self.max_temp)
 
         if self.real_finish >= self.finish:
             print('Эксперимент окончен успешно!')
@@ -245,7 +251,7 @@ class App(tk.Tk):
             self.ani = animation.FuncAnimation(self.fig_1, self.update_temperatures_on_plot,
                                                init_func=self.init_temperatures,
                                                interval=self.timer, repeat=False)
-            client.write_registers(3, 16256, unit=1)
+            client.write_registers(3, 16256, unit=1) # Закомментировать, если нужно вклучить тестирование (просто прогонять случайные числа вместо снятия реальных данных
             self.ani._start()
             self.real_finish_label.configure(text='')
             self.start_button.configure(text='Остановить эксперимент')
@@ -264,7 +270,7 @@ class App(tk.Tk):
     # Остановка замера по превышению температуры или по нажатию кнопки
 
     def stop_measuring(self):
-        client.write_registers(3, 0, unit=1)
+        client.write_registers(3, 0, unit=1)# Закомментировать, если нужно вклучить тестирование (просто прогонять случайные числа вместо снятия реальных данных
         self.real_finish_label.configure(text=self.real_finish.strftime('%d/%m/%y %H:%M:%S'))
         self.ani.event_source.stop()
         self.Measuring.set(FALSE)
@@ -282,7 +288,8 @@ class App(tk.Tk):
 
     def update_temperatures(self):
         try:
-            self.temperatures = [round(read_value(24 + i * 2, 2, 1), 1) for i in range(4)]
+            self.temperatures = [round(read_value(24 + i * 2, 2, 1), 1) for i in range(4)] # Закомментировать, если нужно вклучить тестирование (просто прогонять случайные числа вместо снятия реальных данных
+            #self.temperatures = [round(random.randint(1, 50)) for i in range(4)]
         except:
             return self.temperatures, self.after(int(self.timer / 10), self.update_temperatures)
         self.temp_1.configure(text=self.temperatures[0])
@@ -296,7 +303,8 @@ class App(tk.Tk):
         self.after(1000, self.update_current_time)
 
     def create_report(self):
-        folder_name = self.start.strftime("%d_%m_%Y %H-%M-%S")
+        dirlist = [item for item in os.listdir('.') if os.path.isdir(os.path.join('.', item))]
+        folder_name = f"№{len(dirlist)+1} от " + self.start.strftime("%d_%m_%Y %H-%M-%S")
         os.mkdir(folder_name)
         self.fig_1.savefig(f'{folder_name}\\График температур.png')
         workbook = xlsxwriter.Workbook(f'{folder_name}\\Результат эксперимента.xlsx')
@@ -338,8 +346,11 @@ class App(tk.Tk):
         doc = DocxTemplate('Шаблон.docx')
         myimage = InlineImage(doc, image_descriptor=f'{folder_name}\\График температур.png', width=Mm(175),
                               height=Mm(105))
+
+
+
         context = {'test_date': self.start.strftime("%d/%m/%Y"),
-                   'test_number': 1,
+                   'test_number': len(dirlist) + 1,
                    'len': str(self.len_entry.get()),
                    'temperature': str(self.temp_entry.get()),
                    'time': str(round((self.real_finish-self.start).seconds/3600, 1)),
@@ -360,6 +371,9 @@ class App(tk.Tk):
             })
         doc.render(context)
         doc.save(f'{folder_name}\\Отчёт.docx')
+        convert(f'{folder_name}\\Отчёт.docx')
+        if messagebox.askyesno('Открытие отчёта', 'Создание отчёта заверешено.\nОткрыть его?'):
+            os.system('Отчёт.pdf')
 
     def create_child1(self):
         self.Child1Window = tk.Toplevel(master=self)
